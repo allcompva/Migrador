@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Migrador.Entities;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -13,139 +14,170 @@ namespace Migrador
     {
         protected void Page_Load(object sender, EventArgs e)
         {
-
+            try
+            {
+                if (!IsPostBack)
+                {
+                    List<UiAplication> lstAplications = UiAplication.read();
+                    DDLNombreApp.DataSource = lstAplications;
+                    DDLNombreApp.DataTextField = "name";
+                    DDLNombreApp.DataValueField = "id";
+                    DDLNombreApp.DataBind();
+                }
+            }
+            catch (Exception ex)
+            {
+                throw ex;
+            }
         }
 
         protected void btnDescargaSitio_Click(object sender, EventArgs e)
         {
-            WebClient mywebClient = new WebClient();
-            mywebClient.DownloadFile(
-                string.Format("{0}/js/{1}/Application.js",
-                txtUrl.Text, txtNombreApp.Text), @"d:\Application.js");
-            string resultado =
-                File.ReadAllLines(@"d:\Application.js").Where(
-                    X => X.Contains("\tcontrollers : [")).First();
-            resultado = resultado.Replace("\tcontrollers : [", "");
-            resultado = resultado.Replace("],", "");
-            resultado = resultado.Replace("'", "").Trim();
-            string[] controllers = resultado.Split(',');
-            List<Controllers> lstControllers = new List<Controllers>();
-            foreach (var item in controllers)
+            try
             {
-                lstControllers.Add(new Controllers(item));
-            }
-            DirectoryInfo di = new DirectoryInfo(
-                string.Format(@"{0}", txtCommon.Text));
-            foreach (var fi in di.GetFiles())
-            {
-                string nameSe = Path.GetFileNameWithoutExtension(fi.Name);
-                int i = lstControllers.FindIndex(
-                    c => c.nombre.Contains(nameSe));
-                if (i > 0)
-                    lstControllers[i].package = "common";
-            }
-            di = new DirectoryInfo(
-                string.Format(@"{0}", txtCuentas.Text));
-            foreach (var fi in di.GetFiles())
-            {
-                string nameSe = Path.GetFileNameWithoutExtension(fi.Name);
-                int i = lstControllers.FindIndex(
-                    c => c.nombre.Contains(nameSe));
-                if (i > 0)
-                    lstControllers[i].package = "cuenta";
-            }
-            di = new DirectoryInfo(
-                string.Format(@"{0}", txtTablas.Text));
-            foreach (var fi in di.GetFiles())
-            {
-                string nameSe = Path.GetFileNameWithoutExtension(fi.Name);
-                int i = lstControllers.FindIndex(
-                    c => c.nombre.Contains(nameSe));
-                if (i > 0)
-                    lstControllers[i].package = "tablas";
-            }
-            List<string> view = new List<string>();
-            List<string> models = new List<string>();
-            List<string> stores = new List<string>();
 
-            foreach (var item in lstControllers)
-            {
-                if (item.package == string.Empty)
+                if (Convert.ToInt32(DDLNombreApp.SelectedItem.Value) != 0)
                 {
-                    string urlView = string.Format(
-                        "{0}/js/{1}/controller/{2}.js",
-                        txtUrl.Text, txtNombreApp.Text, item.nombre.Trim());
+                    divAppMigrar.Visible = false;
+                    divContenidoApp.Visible = true;
+                    List<RazorObjects> lstView = new List<RazorObjects>();
+                    List<RazorObjects> lstModel = new List<RazorObjects>();
+                    List<RazorObjects> lstStore = new List<RazorObjects>();
 
-                    StreamReader reader = new StreamReader(
-                        WebRequest.Create(urlView).GetResponse().GetResponseStream());
-                    List<string> lines = new List<string>();
-                    int control = 0;
-                    while (reader.Peek() >= 0)
+                    DirectoryInfo diCommon = new DirectoryInfo(
+                        string.Format(@"{0}", txtCommon.Text));
+
+                    DirectoryInfo diCuenta = new DirectoryInfo(
+                        string.Format(@"{0}", txtCuentas.Text));
+
+                    DirectoryInfo diTablas = new DirectoryInfo(
+                        string.Format(@"{0}", txtTablas.Text));
+
+                    List<Controllers> lstControllers = Entities.Controllers.read(
+                        Convert.ToInt32(DDLNombreApp.SelectedItem.Value),
+                        diCommon, diCuenta, diTablas);
+
+                    //CONTROLLERS PROPIOS DE LA APP
+                    gvControllers.DataSource = lstControllers.FindAll(
+                        c => c.package.Trim().Length == 0).
+                        OrderByDescending(
+                        c => c.nombre, StringComparer.CurrentCultureIgnoreCase);
+                    gvControllers.DataBind();
+                    //CONTROLLERS EN PACKAGE
+                    gvControllersPackage.DataSource = lstControllers.FindAll(c => c.package.Trim().Length > 0).
+                        OrderByDescending(
+                        c => c.nombre, StringComparer.CurrentCultureIgnoreCase);
+                    gvControllersPackage.DataBind();
+
+                    //VIEWS PROPIOS DE LA APP
+                    foreach (var item in lstControllers)
                     {
-                        string linea = reader.ReadLine();
-                        if (linea.Trim().Contains("views: [") ||
-                        linea.Trim().Contains("views : [") ||
-                        linea.Trim().Contains("views:["))
-                        {
-                            string resultadoViews = linea;
-                            resultadoViews = resultadoViews.Replace("views: [", "");
-                            resultadoViews = resultadoViews.Replace("views:[", "");
-                            resultadoViews = resultadoViews.Replace("views : [", "");
-                            resultadoViews = resultadoViews.Replace("],", "");
-                            resultadoViews = resultadoViews.Replace("'", "").Trim();
-                            string[] views = resultadoViews.Split(',').Select(
-                                p => p.Trim()).ToArray();
-                            view.AddRange(views.ToList());
-                        }
-                        if (linea.Trim().Contains("stores: [") ||
-                        linea.Trim().Contains("stores : [") ||
-                        linea.Trim().Contains("stores:["))
-                        {
-                            string resultadoStores = linea;
-                            resultadoStores = resultadoStores.Replace("stores: [", "");
-                            resultadoStores = resultadoStores.Replace("stores:[", "");
-                            resultadoStores = resultadoStores.Replace("stores : [", "");
-                            resultadoStores = resultadoStores.Replace("],", "");
-                            resultadoStores = resultadoStores.Replace("'", "").Trim();
-                            string[] _stores = resultadoStores.Split(',').Select(
-                                p => p.Trim()).ToArray();
-                            stores.AddRange(_stores.ToList());
-                        }
-                        if (linea.Trim().Contains("models: [") ||
-                        linea.Trim().Contains("models : [") ||
-                        linea.Trim().Contains("models:["))
-                        {
-                            string resultadoModels = linea;
-                            resultadoModels = resultadoModels.Replace("models: [", "");
-                            resultadoModels = resultadoModels.Replace("models:[", "");
-                            resultadoModels = resultadoModels.Replace("models : [", "");
-                            resultadoModels = resultadoModels.Replace("],", "");
-                            resultadoModels = resultadoModels.Replace("'", "").Trim();
-                            string[] _models = resultadoModels.Split(',').Select(
-                                p => p.Trim()).ToArray();
-                            models.AddRange(_models.ToList());
-                        }
-                        control++;
-                        if (control > 10)
-                            break;
+                        lstView.AddRange(item.lstViews);
+                        lstModel.AddRange(item.lstModels);
+                        lstStore.AddRange(item.lstStores);
                     }
+                    gvViews.DataSource = lstView.Distinct().ToList().FindAll(
+                        c => c.package.Trim().Length == 0).
+                        OrderByDescending(
+                        c => c.nombre, StringComparer.CurrentCultureIgnoreCase);
+                    gvViews.DataBind();
+                    //VIEWS EN PACKAGE
+                    gvViewsPackage.DataSource = lstView.Distinct().ToList().FindAll(c => c.package.Trim().Length > 0).
+                        OrderByDescending(
+                        c => c.nombre, StringComparer.CurrentCultureIgnoreCase);
+                    gvViewsPackage.DataBind();
+                    //MODELS PROPIOS DE LA APP
+                    gvModels.DataSource = lstModel.Distinct().ToList().FindAll(c => c.package.Trim().Length == 0).
+                        OrderByDescending(
+                        c => c.nombre, StringComparer.CurrentCultureIgnoreCase);
+                    gvModels.DataBind();
+                    //MODELS EN PACKAGE
+                    gvModelsPackage.DataSource = lstModel.Distinct().ToList().FindAll(c => c.package.Trim().Length > 0).
+                        OrderByDescending(
+                        c => c.nombre, StringComparer.CurrentCultureIgnoreCase);
+                    gvModelsPackage.DataBind();
+                    //STORES PROPIOS DE LA APP
+                    gvStores.DataSource = lstStore.Distinct().ToList().FindAll(c => c.package.Trim().Length == 0).
+                        OrderByDescending(
+                        c => c.nombre, StringComparer.CurrentCultureIgnoreCase);
+                    gvStores.DataBind();
+                    //STORES EN PACKAGE
+                    gvStores.DataSource = lstStore.Distinct().ToList().FindAll(c => c.package.Trim().Length > 0).
+                        OrderByDescending(
+                        c => c.nombre, StringComparer.CurrentCultureIgnoreCase);
+                    gvStores.DataBind();
 
-                    reader.Dispose();
+                }
+                else
+                {
+                    gvControllers.DataSource = null;
+                    gvControllers.DataBind();
+
+                    gvModels.DataSource = null;
+                    gvModelsPackage.DataBind();
+
+                    gvViews.DataSource = null;
+                    gvViewsPackage.DataBind();
+
+                    gvStores.DataSource = null;
+                    gvStoresPackage.DataBind();
                 }
             }
+            catch (Exception ex)
+            {
+                throw ex;
+            }
 
-            gvControllers.DataSource = lstControllers.OrderByDescending(
-                c => c.package, StringComparer.CurrentCultureIgnoreCase);
-            gvControllers.DataBind();
+        }
 
-            gvViews.DataSource = view.Distinct().ToList();
-            gvViews.DataBind();
+        protected void DDLNombreApp_SelectedIndexChanged(object sender, EventArgs e)
+        {
 
-            gvModels.DataSource = models.Distinct().ToList();
-            gvModels.DataBind();
+        }
 
-            gvStores.DataSource = stores.Distinct().ToList();
-            gvStores.DataBind();
+        protected void fillTablas()
+        {
+
+        }
+
+        protected void btnProcesarControllersPropios_Click(object sender, EventArgs e)
+        {
+            try
+            {
+                List<Controllers> lst = leerGrilla();
+                foreach (Controllers controller in lst)
+                {
+                    WebClient mywebClient = new WebClient();
+                    string url = string.Format("{0}/js/{1}/{2}.js",
+                        txtUrl.Text, DDLNombreApp.SelectedItem.Text,
+                        controller.nombre);
+                    string rutaArchivo = "@" + txtSalida.Text + "\\" + controller.nombre + ".js";
+
+
+                    mywebClient.DownloadFile(url, rutaArchivo);
+                }
+
+            }
+            catch (Exception ex)
+            {
+                throw ex;
+            }
+        }
+
+        private List<Controllers> leerGrilla()
+        {
+            List<Controllers> lst = new List<Controllers>();
+            for (int i = 0; i < gvControllers.Rows.Count; i++)
+            {
+                GridViewRow row = gvControllers.Rows[i];
+                Controllers obj = new Controllers();
+
+                obj.nombre = gvControllers.DataKeys[i].Values["nombre"].ToString();
+                lst.Add(obj);
+
+            }
+            //txtTot.Text = tot.ToString();
+            return lst;
         }
     }
 }
